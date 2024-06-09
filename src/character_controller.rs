@@ -1,5 +1,7 @@
-use bevy::{ecs::query::Has, prelude::*};
+use bevy::prelude::*;
 use bevy_xpbd_3d::{math::*, prelude::*};
+
+use crate::MainCamera;
 
 pub struct CharacterControllerPlugin;
 
@@ -33,7 +35,25 @@ pub struct CharacterController;
 /// A marker component indicating that an entity is on the ground.
 #[derive(Component)]
 #[component(storage = "SparseSet")]
-pub struct Grounded;
+pub struct Grounded {
+    coyote_timer: f32,
+    pub coyote_time: f32,
+    jump_buffer_timer: f32,
+    pub jump_buffer: f32,
+    grounded: bool,
+}
+
+impl Default for Grounded {
+    fn default() -> Self {
+        Self {
+            coyote_timer: 0.0,
+            coyote_time: 0.2,
+            jump_buffer_timer: 0.0,
+            jump_buffer: 0.2,
+            grounded: false
+        }
+    }
+}
 /// The acceleration used for character movement.
 #[derive(Component)]
 pub struct MovementAcceleration(Scalar);
@@ -188,13 +208,13 @@ fn gamepad_input(
 
 /// Updates the [`Grounded`] status for character controllers.
 fn update_grounded(
-    mut commands: Commands,
     mut query: Query<
-        (Entity, &ShapeHits, &Rotation, Option<&MaxSlopeAngle>),
+        (&ShapeHits, &Rotation, &mut Grounded, Option<&MaxSlopeAngle>),
         With<CharacterController>,
     >,
+    time: Res<Time>,
 ) {
-    for (entity, hits, rotation, max_slope_angle) in &mut query {
+    for (hits, rotation, mut grounded, max_slope_angle) in &mut query {
         // The character is grounded if the shape caster has a hit with a normal
         // that isn't too steep.
         let is_grounded = hits.iter().any(|hit| {
@@ -206,9 +226,12 @@ fn update_grounded(
         });
 
         if is_grounded {
-            commands.entity(entity).insert(Grounded);
+            grounded.coyote_timer = grounded.coyote_time;
+            grounded.grounded = true;
         } else {
-            commands.entity(entity).remove::<Grounded>();
+            grounded.grounded = false;
+            if grounded.coyote_timer > 0. { grounded.coyote_timer -= time.delta_seconds(); }
+            if grounded.jump_buffer_timer > 0. { grounded.jump_buffer_timer -= time.delta_seconds(); }
         }
     }
 }
@@ -221,23 +244,41 @@ fn movement(
         &MovementAcceleration,
         &JumpImpulse,
         &mut LinearVelocity,
-        Has<Grounded>,
+        &mut Grounded,
     )>,
+    camera: Query<&Transform, With<MainCamera>>,
 ) {
     let delta_time = time.delta_seconds();
 
+    for (_, jump_impulse, mut linear_velocity, mut grounded) in
+            &mut controllers
+        {
+            if grounded.grounded && grounded.jump_buffer_timer > 0. {
+                linear_velocity.y = jump_impulse.0;
+                grounded.jump_buffer_timer = -1.;
+                grounded.grounded = false;
+            }
+        }
+
     for event in movement_event_reader.read() {
-        for (movement_acceleration, jump_impulse, mut linear_velocity, is_grounded) in
+        for (movement_acceleration, jump_impulse, mut linear_velocity, mut grounded) in
             &mut controllers
         {
             match event {
                 MovementAction::Move(direction) => {
-                    linear_velocity.x += direction.x * movement_acceleration.0 * delta_time;
-                    linear_velocity.z -= direction.y * movement_acceleration.0 * delta_time;
+                    let right_xz = camera.single().right().xz().normalize() * direction.x * movement_acceleration.0 * delta_time;
+                    let forward_xz = camera.single().forward().xz().normalize() * direction.y * movement_acceleration.0 * delta_time;
+                    let total_xz = right_xz + forward_xz;
+                    linear_velocity.x += total_xz.x;
+                    linear_velocity.z += total_xz.y;
                 }
                 MovementAction::Jump => {
-                    if is_grounded {
+                    if grounded.grounded || grounded.coyote_timer > 0. {
                         linear_velocity.y = jump_impulse.0;
+                        grounded.coyote_timer = -1.;
+                    }
+                    else if !grounded.grounded {
+                        grounded.jump_buffer_timer = grounded.jump_buffer;
                     }
                 }
             }

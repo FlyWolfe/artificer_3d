@@ -30,10 +30,8 @@ fn main() {
                 .before(TransformSystem::TransformPropagate),
         )
         .add_systems(
-            PostUpdate,
-            update_camera
-                .after(PhysicsSet::Sync)
-                .before(TransformSystem::TransformPropagate),
+            Update,
+            update_camera,
         )
         .run();
 }
@@ -65,8 +63,9 @@ fn setup(
             100.0,
             0.92,
             8.0,
-            (30f32).to_radians(),
+            (70f32).to_radians(),
         ),
+        Grounded::default(),
         Friction::ZERO.with_combine_rule(CoefficientCombine::Min),
         Restitution::ZERO.with_combine_rule(CoefficientCombine::Min),
         GravityScale(2.0),
@@ -99,8 +98,8 @@ fn setup(
     commands.spawn(DirectionalLightBundle {
         directional_light: DirectionalLight {
             shadows_enabled: true,
-            color: Color::rgb(1.0, 1.0, 0.9),
-            illuminance: 12000.,
+            color: Color::rgb(1.0, 1.0, 0.98),
+            illuminance: 8000.,
             ..default()
         },
         transform: Transform::from_xyz(0.0, 0.0, 0.0).looking_at(Vec3::new(0.2, -1.0, 0.2), Vec3::Y),
