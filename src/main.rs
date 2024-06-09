@@ -1,21 +1,20 @@
-use bevy::prelude::*;
+use bevy::{input::mouse::MouseMotion, prelude::*, transform::TransformSystem};
+use bevy_dolly::prelude::*;
 use bevy_egui::{egui, EguiContexts, EguiPlugin};
 use bevy_xpbd_3d::prelude::*;
 use character_controller::*;
-use smooth_bevy_cameras::{
-    controllers::unreal::{UnrealCameraBundle, UnrealCameraController, UnrealCameraPlugin},
-    LookTransformPlugin,
-};
 
 mod character_controller;
+
+// The component tag used to parent to a Dolly Rig
+#[derive(Component)]
+struct MainCamera;
 
 fn main() {
     App::new()
         .insert_resource(Msaa::default())
         .add_plugins((
             DefaultPlugins,
-            LookTransformPlugin,
-            UnrealCameraPlugin::default(),
             PhysicsPlugins::default(),
             EguiPlugin,
             CharacterControllerPlugin,
@@ -24,6 +23,18 @@ fn main() {
         // Systems that create Egui widgets should be run during the `CoreSet::Update` set,
         // or after the `EguiSet::BeginFrame` system (which belongs to the `CoreSet::PreUpdate` set).
         .add_systems(Update, ui_example_system)
+        .add_systems(
+            PostUpdate,
+            Dolly::<MainCamera>::update_active_continuous
+                .after(PhysicsSet::Sync)
+                .before(TransformSystem::TransformPropagate),
+        )
+        .add_systems(
+            PostUpdate,
+            update_camera
+                .after(PhysicsSet::Sync)
+                .before(TransformSystem::TransformPropagate),
+        )
         .run();
 }
 
@@ -96,12 +107,33 @@ fn setup(
         ..default()
     });
 
-    commands
-        .spawn(Camera3dBundle::default())
-        .insert(UnrealCameraBundle::new(
-            UnrealCameraController::default(),
-            Vec3::new(-2.0, 5.0, 5.0),
-            Vec3::new(0., 0., 0.),
-            Vec3::Y,
-        ));
+    // Camera
+    commands.spawn((
+        MainCamera,
+        Rig::builder()
+            .with(bevy_dolly::prelude::Position::new(Vec3::ZERO))
+            .with(YawPitch::new().yaw_degrees(0.0).pitch_degrees(-30.0))
+            .with(Smooth::new_position(0.3))
+            .with(Smooth::new_rotation(0.3))
+            .with(Arm::new(Vec3::Z * 4.0))
+            .build(),
+        Camera3dBundle {
+            transform: Transform::from_xyz(0., 1., 5.).looking_at(Vec3::ZERO, Vec3::Y),
+            ..Default::default()
+        }
+    ));
+}
+
+fn update_camera(q0: Query<&Transform, With<CharacterController>>, mut q1: Query<&mut Rig>, mut motion_evr: EventReader<MouseMotion>) {
+    let player = q0.single().to_owned();
+    let mut rig = q1.single_mut();
+
+    rig.driver_mut::<bevy_dolly::prelude::Position>()
+        .position = player.translation + Vec3::new(0., 1., 0.);
+
+    //for ev in motion_evr.read() {
+    //    rig.driver_mut::<YawPitch>()
+    //    .rotate_yaw_pitch(-ev.delta.x, -ev.delta.y);
+    //}
+    
 }

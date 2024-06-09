@@ -25,4 +25,4 @@ bevy = { version = "0.13.2", features = ["dynamic_linking"] }
 bevy_egui = "0.27"
 belly = { git = "https://github.com/jkb0o/belly.git" }
 bevy_xpbd_3d = "0.4.2"
-smooth-bevy-cameras = "0.11.0"
+bevy_dolly = { version = "0.0.3" }
