@@ -25,7 +25,7 @@ fn main() {
         .add_systems(Update, ui_example_system)
         .add_systems(
             PostUpdate,
-            Dolly::<MainCamera>::update_active_continuous
+            Dolly::<MainCamera>::update_active
                 .after(PhysicsSet::Sync)
                 .before(TransformSystem::TransformPropagate),
         )
@@ -95,15 +95,15 @@ fn setup(
         RigidBody::Static,
     ));
 
-    // Light
-    commands.spawn(PointLightBundle {
-        point_light: PointLight {
-            intensity: 2_000_000.0,
-            range: 50.0,
+    // Sun
+    commands.spawn(DirectionalLightBundle {
+        directional_light: DirectionalLight {
             shadows_enabled: true,
+            color: Color::rgb(1.0, 1.0, 0.9),
+            illuminance: 12000.,
             ..default()
         },
-        transform: Transform::from_xyz(0.0, 15.0, 0.0),
+        transform: Transform::from_xyz(0.0, 0.0, 0.0).looking_at(Vec3::new(0.2, -1.0, 0.2), Vec3::Y),
         ..default()
     });
 
@@ -115,7 +115,7 @@ fn setup(
             .with(YawPitch::new().yaw_degrees(0.0).pitch_degrees(-30.0))
             .with(Smooth::new_position(0.3))
             .with(Smooth::new_rotation(0.3))
-            .with(Arm::new(Vec3::Z * 4.0))
+            .with(Arm::new((Vec3::Z * 10.0) + (Vec3::Y * 1.0)))
             .build(),
         Camera3dBundle {
             transform: Transform::from_xyz(0., 1., 5.).looking_at(Vec3::ZERO, Vec3::Y),
@@ -124,16 +124,17 @@ fn setup(
     ));
 }
 
-fn update_camera(q0: Query<&Transform, With<CharacterController>>, mut q1: Query<&mut Rig>, mut motion_evr: EventReader<MouseMotion>) {
+fn update_camera(q0: Query<&Transform, With<CharacterController>>, mut q1: Query<&mut Rig>, mut motion_evr: EventReader<MouseMotion>, time: Res<Time>) {
     let player = q0.single().to_owned();
     let mut rig = q1.single_mut();
+    let speed: f32 = 20.;
 
     rig.driver_mut::<bevy_dolly::prelude::Position>()
         .position = player.translation + Vec3::new(0., 1., 0.);
 
-    //for ev in motion_evr.read() {
-    //    rig.driver_mut::<YawPitch>()
-    //    .rotate_yaw_pitch(-ev.delta.x, -ev.delta.y);
-    //}
+    for ev in motion_evr.read() {
+        rig.driver_mut::<YawPitch>()
+        .rotate_yaw_pitch(-ev.delta.x * time.delta_seconds() * speed, -ev.delta.y * time.delta_seconds() * speed);
+    }
     
 }
