@@ -50,7 +50,7 @@ impl Default for Grounded {
             coyote_time: 0.2,
             jump_buffer_timer: 0.0,
             jump_buffer: 0.2,
-            grounded: false
+            grounded: false,
         }
     }
 }
@@ -230,8 +230,12 @@ fn update_grounded(
             grounded.grounded = true;
         } else {
             grounded.grounded = false;
-            if grounded.coyote_timer > 0. { grounded.coyote_timer -= time.delta_seconds(); }
-            if grounded.jump_buffer_timer > 0. { grounded.jump_buffer_timer -= time.delta_seconds(); }
+            if grounded.coyote_timer > 0. {
+                grounded.coyote_timer -= time.delta_seconds();
+            }
+            if grounded.jump_buffer_timer > 0. {
+                grounded.jump_buffer_timer -= time.delta_seconds();
+            }
         }
     }
 }
@@ -250,15 +254,13 @@ fn movement(
 ) {
     let delta_time = time.delta_seconds();
 
-    for (_, jump_impulse, mut linear_velocity, mut grounded) in
-            &mut controllers
-        {
-            if grounded.grounded && grounded.jump_buffer_timer > 0. {
-                linear_velocity.y = jump_impulse.0;
-                grounded.jump_buffer_timer = -1.;
-                grounded.grounded = false;
-            }
+    for (_, jump_impulse, mut linear_velocity, mut grounded) in &mut controllers {
+        if grounded.grounded && grounded.jump_buffer_timer > 0. {
+            linear_velocity.y = jump_impulse.0;
+            grounded.jump_buffer_timer = -1.;
+            grounded.grounded = false;
         }
+    }
 
     for event in movement_event_reader.read() {
         for (movement_acceleration, jump_impulse, mut linear_velocity, mut grounded) in
@@ -266,8 +268,14 @@ fn movement(
         {
             match event {
                 MovementAction::Move(direction) => {
-                    let right_xz = camera.single().right().xz().normalize() * direction.x * movement_acceleration.0 * delta_time;
-                    let forward_xz = camera.single().forward().xz().normalize() * direction.y * movement_acceleration.0 * delta_time;
+                    let right_xz = camera.single().right().xz().normalize()
+                        * direction.x
+                        * movement_acceleration.0
+                        * delta_time;
+                    let forward_xz = camera.single().forward().xz().normalize()
+                        * direction.y
+                        * movement_acceleration.0
+                        * delta_time;
                     let total_xz = right_xz + forward_xz;
                     linear_velocity.x += total_xz.x;
                     linear_velocity.z += total_xz.y;
@@ -276,8 +284,7 @@ fn movement(
                     if grounded.grounded || grounded.coyote_timer > 0. {
                         linear_velocity.y = jump_impulse.0;
                         grounded.coyote_timer = -1.;
-                    }
-                    else if !grounded.grounded {
+                    } else if !grounded.grounded {
                         grounded.jump_buffer_timer = grounded.jump_buffer;
                     }
                 }

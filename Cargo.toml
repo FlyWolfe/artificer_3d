@@ -26,3 +26,10 @@ bevy_egui = "0.27"
 belly = { git = "https://github.com/jkb0o/belly.git" }
 bevy_xpbd_3d = "0.4.2"
 bevy_dolly = { version = "0.0.3" }
+bevy_hanabi = "0.11.0"
+iyes_perf_ui = "0.2.3"
+space_editor = {git = "https://github.com/rewin123/space_editor.git"}
+
+# For now it is recomendended to use the following patches of the libraries we are using
+[patch.crates-io]
+bevy-inspector-egui ={ git = "https://github.com/naomijub/bevy-inspector-egui.git" }
