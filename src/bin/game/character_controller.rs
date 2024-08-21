@@ -1,5 +1,5 @@
+use avian3d::{math::*, prelude::*};
 use bevy::prelude::*;
-use bevy_xpbd_3d::{math::*, prelude::*};
 
 use crate::MainCamera;
 
@@ -129,7 +129,7 @@ impl CharacterControllerBundle {
                 caster_shape,
                 Vector::ZERO,
                 Quaternion::default(),
-                Direction3d::NEG_Y,
+                Dir3::NEG_Y,
             )
             .with_max_time_of_impact(0.2),
             locked_axes: LockedAxes::ROTATION_LOCKED,
@@ -219,7 +219,11 @@ fn update_grounded(
         // that isn't too steep.
         let is_grounded = hits.iter().any(|hit| {
             if let Some(angle) = max_slope_angle {
-                rotation.rotate(-hit.normal2).angle_between(Vector::Y).abs() <= angle.0
+                rotation
+                    .mul_vec3(-hit.normal2)
+                    .angle_between(Vector::Y)
+                    .abs()
+                    <= angle.0
             } else {
                 true
             }

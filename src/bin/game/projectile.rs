@@ -1,11 +1,16 @@
-use bevy::prelude::*;
-use bevy_xpbd_3d::{
-    components::{CollisionLayers, LinearVelocity, RigidBody},
+use avian3d::{
+    collision::CollisionLayers,
+    dynamics::rigid_body::{LinearVelocity, RigidBody},
     math::Vector3,
     prelude::{Collider, RayCaster, RayHits},
 };
+use bevy::{
+    ecs::query::QuerySingleError,
+    pbr::{ExtendedMaterial, OpaqueRendererMethod},
+    prelude::*,
+};
 
-use crate::game_management::GameLayer;
+use crate::{game_management::GameLayer, MyExtension};
 use crate::{CharacterController, MainCamera};
 
 /// Base projectile component marker
@@ -31,7 +36,7 @@ pub fn mouse_input(
     mouse_input: Res<ButtonInput<MouseButton>>,
     mut commands: Commands,
     mut meshes: ResMut<Assets<Mesh>>,
-    mut materials: ResMut<Assets<StandardMaterial>>,
+    mut materials: ResMut<Assets<ExtendedMaterial<StandardMaterial, MyExtension>>>,
     query: Query<&Transform, With<CharacterController>>,
     query_camera: Query<&Transform, With<MainCamera>>,
     query_ray: Query<(&RayCaster, &RayHits), With<MainCamera>>,
@@ -39,7 +44,18 @@ pub fn mouse_input(
     if !mouse_input.pressed(MouseButton::Left) {
         return;
     }
-    let pos = query.single().translation;
+    let mut pos = Vec3::ZERO;
+    match query.get_single() {
+        Ok(transform) => {
+            pos = transform.translation;
+        }
+        Err(QuerySingleError::NoEntities(_)) => {
+            println!("Error: There is no player!");
+        }
+        Err(QuerySingleError::MultipleEntities(_)) => {
+            println!("Error: There is more than one player!");
+        }
+    }
 
     let cam_transform = query_camera.single();
     let speed = 10f32;
@@ -69,10 +85,23 @@ pub fn mouse_input(
             GameLayer::Projectile,
             [GameLayer::Enemy, GameLayer::Ground, GameLayer::Default],
         ),
-        PbrBundle {
-            mesh: meshes.add(Cuboid::default()),
-            material: materials.add(Color::rgb(0.1, 0.8, 0.1)),
+        MaterialMeshBundle {
+            mesh: meshes.add(Sphere::default()),
             transform: Transform::from_xyz(pos.x, pos.y + 0.1, pos.z),
+            material: materials.add(ExtendedMaterial {
+                base: StandardMaterial {
+                    base_color: Color::srgb(0.9, 0.1, 0.1),
+                    // can be used in forward or deferred mode.
+                    opaque_render_method: OpaqueRendererMethod::Auto,
+                    // in deferred mode, only the PbrInput can be modified (uvs, color and other material properties),
+                    // in forward mode, the output can also be modified after lighting is applied.
+                    // see the fragment shader `extended_material.wgsl` for more info.
+                    // Note: to run in deferred mode, you must also add a `DeferredPrepass` component to the camera and either
+                    // change the above to `OpaqueRendererMethod::Deferred` or add the `DefaultOpaqueRendererMethod` resource.
+                    ..Default::default()
+                },
+                extension: MyExtension { quantize_steps: 3 },
+            }),
             ..default()
         },
     ));

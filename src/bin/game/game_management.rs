@@ -1,5 +1,4 @@
-use bevy_xpbd_3d::prelude::PhysicsLayer;
-
+use avian3d::prelude::PhysicsLayer;
 
 #[derive(PhysicsLayer)]
 pub enum GameLayer {

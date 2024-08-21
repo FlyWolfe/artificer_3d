@@ -1,43 +1,48 @@
-use belly::prelude::*;
-use bevy::{input::mouse::MouseMotion, prelude::*, transform::TransformSystem};
+use avian3d::prelude::*;
+use bevy::{
+    input::mouse::MouseMotion,
+    pbr::{ExtendedMaterial, MaterialExtension, OpaqueRendererMethod},
+    prelude::*,
+    render::render_resource::{AsBindGroup, ShaderRef},
+    transform::TransformSystem,
+};
 use bevy_dolly::prelude::*;
 use bevy_hanabi::prelude::*;
-use bevy_xpbd_3d::prelude::*;
 use character_controller::*;
 use game_management::GameLayer;
-use iyes_perf_ui::prelude::*;
-use space_editor::prelude::*;
+use sickle_ui::{prelude::*, SickleUiPlugin};
 
 mod character_controller;
 mod game_management;
 mod projectile;
 
 // The component tag used to parent to a Dolly Rig
-#[derive(Component)]
+#[derive(Component, Reflect, Clone)]
+#[reflect(Component, Default)]
 struct MainCamera;
+
+impl Default for MainCamera {
+    fn default() -> Self {
+        Self {}
+    }
+}
 
 fn main() {
     App::new()
         .insert_resource(Msaa::default())
-        .add_plugins((
-            DefaultPlugins,
-            SpaceEditorPlugin,
-            BellyPlugin,
-            DollyCursorGrab,
-            CharacterControllerPlugin,
-            HanabiPlugin,
-            //PhysicsPlugins::default(),
-        ))// we want Bevy to measure these values for us:
-        .add_plugins(bevy::diagnostic::FrameTimeDiagnosticsPlugin)
-        .add_plugins(bevy::diagnostic::EntityCountDiagnosticsPlugin)
-        .add_plugins(bevy::diagnostic::SystemInformationDiagnosticsPlugin)
-        .add_plugins(PerfUiPlugin)
+        .add_plugins(DefaultPlugins)
+        .add_plugins(SickleUiPlugin)
+        .add_plugins(DollyCursorGrab)
+        .add_plugins(CharacterControllerPlugin)
+        .add_plugins(HanabiPlugin)
+        .add_plugins(PhysicsPlugins::default())
+        //.add_plugins(EditorPlugin::default())
+        //.add_plugins(EditorPlugin::new().in_new_window(Window::default()))
+        .add_plugins(MaterialPlugin::<
+            ExtendedMaterial<StandardMaterial, MyExtension>,
+        >::default())
         .add_systems(Startup, setup)
-        .add_systems(Startup, simple_editor_setup)
         //.add_systems(Startup, effects_setup.before(setup))
-        // Systems that create Egui widgets should be run during the `CoreSet::Update` set,
-        // or after the `EguiSet::BeginFrame` system (which belongs to the `CoreSet::PreUpdate` set).
-        //.add_systems(Update, ui_example_system)
         .add_systems(Update, Dolly::<MainCamera>::update_active)
         .add_systems(
             PostUpdate,
@@ -53,19 +58,28 @@ fn main() {
 fn setup(
     mut commands: Commands,
     mut meshes: ResMut<Assets<Mesh>>,
-    mut materials: ResMut<Assets<StandardMaterial>>,
+    mut materials: ResMut<Assets<ExtendedMaterial<StandardMaterial, MyExtension>>>,
     assets: Res<AssetServer>,
 ) {
-    // create a simple Perf UI with default settings
-    // and all entries provided by the crate:
-    //commands.spawn(PerfUiCompleteBundle::default());
-
     // Player
     commands.spawn((
-        PbrBundle {
-            mesh: meshes.add(Capsule3d::new(0.4, 1.0)),
-            material: materials.add(Color::rgb(0.4, 0.5, 0.9)),
-            transform: Transform::from_xyz(0.0, 1.5, 0.0),
+        MaterialMeshBundle {
+            mesh: meshes.add(Capsule3d::new(0.5, 1.0)),
+            transform: Transform::from_xyz(0.0, 1.0, 0.0),
+            material: materials.add(ExtendedMaterial {
+                base: StandardMaterial {
+                    base_color: Color::srgb(0.1, 0.1, 0.9),
+                    // can be used in forward or deferred mode.
+                    opaque_render_method: OpaqueRendererMethod::Auto,
+                    // in deferred mode, only the PbrInput can be modified (uvs, color and other material properties),
+                    // in forward mode, the output can also be modified after lighting is applied.
+                    // see the fragment shader `extended_material.wgsl` for more info.
+                    // Note: to run in deferred mode, you must also add a `DeferredPrepass` component to the camera and either
+                    // change the above to `OpaqueRendererMethod::Deferred` or add the `DefaultOpaqueRendererMethod` resource.
+                    ..Default::default()
+                },
+                extension: MyExtension { quantize_steps: 3 },
+            }),
             ..default()
         },
         CharacterControllerBundle::new(Collider::capsule(1.0, 0.4)).with_movement(
@@ -74,50 +88,15 @@ fn setup(
             8.0,
             (70f32).to_radians(),
         ),
-        CollisionLayers::new(GameLayer::Player, [GameLayer::Enemy, GameLayer::Ground, GameLayer::Default]),
+        CollisionLayers::new(
+            GameLayer::Player,
+            [GameLayer::Enemy, GameLayer::Ground, GameLayer::Default],
+        ),
         Grounded::default(),
         Friction::ZERO.with_combine_rule(CoefficientCombine::Min),
         Restitution::ZERO.with_combine_rule(CoefficientCombine::Min),
         GravityScale(2.0),
     ));
-
-    // A cube to move around
-    commands.spawn((
-        RigidBody::Dynamic,
-        Collider::cuboid(1.0, 1.0, 1.0),
-        CollisionLayers::new(GameLayer::Default, LayerMask::ALL),
-        PbrBundle {
-            mesh: meshes.add(Cuboid::default()),
-            material: materials.add(Color::rgb(0.8, 0.1, 0.1)),
-            transform: Transform::from_xyz(3.0, 2.0, 3.0),
-            ..default()
-        },
-    ));
-
-    // Environment (see `async_colliders` example for creating colliders from scenes)
-    commands.spawn((
-        SceneBundle {
-            scene: assets.load("models/Scene.glb#Scene0"),
-            transform: Transform::from_rotation(Quat::from_rotation_y(-std::f32::consts::PI * 0.5)),
-            ..default()
-        },
-        AsyncSceneCollider::new(Some(ComputedCollider::ConvexHull)),
-        CollisionLayers::new(GameLayer::Ground, LayerMask::ALL),
-        RigidBody::Static,
-    ));
-
-    // Sun
-    commands.spawn(DirectionalLightBundle {
-        directional_light: DirectionalLight {
-            shadows_enabled: true,
-            color: Color::rgb(1.0, 1.0, 0.98),
-            illuminance: 8000.,
-            ..default()
-        },
-        transform: Transform::from_xyz(0.0, 0.0, 0.0)
-            .looking_at(Vec3::new(0.2, -1.0, 0.2), Vec3::Y),
-        ..default()
-    });
 
     // Camera
     commands.spawn((
@@ -133,8 +112,46 @@ fn setup(
             transform: Transform::from_xyz(0., 1., 5.).looking_at(Vec3::ZERO, Vec3::Y),
             ..Default::default()
         },
-        RayCaster::new(Vec3::ZERO, Direction3d::X),
+        RayCaster::new(Vec3::ZERO, Dir3::X),
     ));
+
+    // Ground
+    commands.spawn((
+        MaterialMeshBundle {
+            mesh: meshes.add(Plane3d::new(Vec3::Y, Vec2::new(10.0, 10.0))),
+            transform: Transform::from_xyz(0.0, 0.0, 0.0),
+            material: materials.add(ExtendedMaterial {
+                base: StandardMaterial {
+                    base_color: Color::srgb(0.2, 0.9, 0.2),
+                    // can be used in forward or deferred mode.
+                    opaque_render_method: OpaqueRendererMethod::Auto,
+                    // in deferred mode, only the PbrInput can be modified (uvs, color and other material properties),
+                    // in forward mode, the output can also be modified after lighting is applied.
+                    // see the fragment shader `extended_material.wgsl` for more info.
+                    // Note: to run in deferred mode, you must also add a `DeferredPrepass` component to the camera and either
+                    // change the above to `OpaqueRendererMethod::Deferred` or add the `DefaultOpaqueRendererMethod` resource.
+                    ..Default::default()
+                },
+                extension: MyExtension { quantize_steps: 3 },
+            }),
+            ..default()
+        },
+        CollisionLayers::new(GameLayer::Ground, LayerMask::ALL),
+        RigidBody::Static,
+        Collider::cuboid(20.0, 0.0, 20.0),
+    ));
+
+    // light
+    commands.spawn(DirectionalLightBundle {
+        directional_light: DirectionalLight {
+            color: Color::srgb(0.8, 0.8, 0.1),
+            shadows_enabled: true,
+            illuminance: 30000.0,
+            ..default()
+        },
+        transform: Transform::default().looking_at(Vec3::new(-1.0, -2.5, -1.5), Vec3::Y),
+        ..default()
+    });
 }
 
 fn effects_setup(mut commands: Commands, mut effects: ResMut<Assets<EffectAsset>>) {
@@ -230,4 +247,22 @@ fn update_camera(
     let (mut caster, cam) = query.single_mut();
     caster.origin = cam.translation;
     caster.direction = cam.forward();
+}
+
+#[derive(Asset, AsBindGroup, Reflect, Debug, Clone)]
+pub struct MyExtension {
+    // We need to ensure that the bindings of the base material and the extension do not conflict,
+    // so we start from binding slot 100, leaving slots 0-99 for the base material.
+    #[uniform(100)]
+    pub quantize_steps: u32,
+}
+
+impl MaterialExtension for MyExtension {
+    fn fragment_shader() -> ShaderRef {
+        "shaders/toon_shader.wgsl".into()
+    }
+
+    fn deferred_fragment_shader() -> ShaderRef {
+        "shaders/toon_shader.wgsl".into()
+    }
 }
